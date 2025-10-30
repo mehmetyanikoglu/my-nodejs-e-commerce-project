@@ -1,4 +1,4 @@
-# Node.js & Express E-Ticaret API Projesi
+# Node.js & Express.js E-Ticaret API Projesi
 
 Bu proje, Node.js, Express ve MongoDB kullanılarak geliştirilmiş temel bir e-ticaret platformu için RESTful API sunucusudur. Proje, modern backend geliştirme pratiklerini öğrenmek ve uygulamak amacıyla oluşturulmuştur. Kullanıcı kaydı, JWT ile kimlik doğrulama ve ürün listeleme gibi temel özellikleri içerir.
 
