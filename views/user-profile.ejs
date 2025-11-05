@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= pageTitle %></title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f7fa;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .navbar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 15px 30px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: white;
+        }
+        .navbar h2 { font-size: 20px; }
+        .navbar .links a {
+            color: white;
+            text-decoration: none;
+            margin-left: 15px;
+            padding: 8px 15px;
+            border-radius: 5px;
+            background: rgba(255,255,255,0.2);
+            transition: all 0.3s;
+        }
+        .navbar .links a:hover { background: rgba(255,255,255,0.3); }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .profile-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 40px;
+            color: white;
+            text-align: center;
+        }
+        .profile-header h1 { font-size: 32px; margin-bottom: 10px; }
+        .profile-header .meta {
+            font-size: 14px;
+            opacity: 0.9;
+            margin-top: 10px;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 6px 15px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-top: 10px;
+        }
+        .status-active { background: #10b981; }
+        .status-inactive { background: #ef4444; }
+        .status-approved { background: #3b82f6; }
+        .status-pending { background: #f59e0b; }
+        .profile-body { padding: 40px; }
+        .info-section {
+            margin-bottom: 30px;
+            padding-bottom: 30px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .info-section:last-child { border-bottom: none; }
+        .info-section h2 {
+            color: #667eea;
+            font-size: 20px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+        .info-item {
+            padding: 15px;
+            background: #f9fafb;
+            border-radius: 8px;
+        }
+        .info-item label {
+            display: block;
+            font-size: 12px;
+            color: #6b7280;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 5px;
+        }
+        .info-item .value {
+            font-size: 16px;
+            color: #111827;
+            font-weight: 600;
+        }
+        .skills-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .skill-tag {
+            padding: 8px 15px;
+            background: #667eea;
+            color: white;
+            border-radius: 20px;
+            font-size: 14px;
+        }
+        .about-text {
+            padding: 20px;
+            background: #f9fafb;
+            border-radius: 8px;
+            line-height: 1.6;
+            color: #374151;
+        }
+        .action-buttons {
+            display: flex;
+            gap: 15px;
+            margin-top: 30px;
+        }
+        .btn {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+            transition: all 0.3s;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4); }
+        .btn-secondary {
+            background: #e5e7eb;
+            color: #374151;
+        }
+        .btn-secondary:hover { background: #d1d5db; }
+    </style>
+</head>
+<body>
+    <div class="navbar">
+        <h2>💼 İş Arayan Platformu</h2>
+        <div class="links">
+            <span>Hoş geldin, <%= user.name %>!</span>
+            <a href="/workers/edit">Profili Düzenle</a>
+            <% if (user.isAdmin) { %>
+                <a href="/admin/dashboard">Admin Paneli</a>
+            <% } %>
+            <a href="/auth/logout">Çıkış</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="profile-header">
+            <h1><%= worker.fullName %></h1>
+            <p><%= worker.profession %> • <%= worker.age %> yaş</p>
+            <div class="meta">
+                <span class="status-badge <%= worker.isActive ? 'status-active' : 'status-inactive' %>">
+                    <%= worker.isActive ? '🟢 Aktif İş Arıyor' : '🔴 İş Aramıyor' %>
+                </span>
+                <span class="status-badge <%= worker.isApproved ? 'status-approved' : 'status-pending' %>">
+                    <%= worker.isApproved ? '✓ Onaylandı' : '⏳ Onay Bekliyor' %>
+                </span>
+            </div>
+        </div>
+
+        <div class="profile-body">
+            <div class="info-section">
+                <h2>📋 Genel Bilgiler</h2>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <label>Ad Soyad</label>
+                        <div class="value"><%= worker.fullName %></div>
+                    </div>
+                    <div class="info-item">
+                        <label>Doğum Tarihi</label>
+                        <div class="value"><%= new Date(worker.birthDate).toLocaleDateString('tr-TR') %> (<%= worker.age %> yaş)</div>
+                    </div>
+                    <div class="info-item">
+                        <label>Telefon</label>
+                        <div class="value"><%= worker.phone %></div>
+                    </div>
+                    <div class="info-item">
+                        <label>E-posta</label>
+                        <div class="value"><%= worker.user.email %></div>
+                    </div>
+                    <div class="info-item">
+                        <label>Adres</label>
+                        <div class="value"><%= worker.address %></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="info-section">
+                <h2>💼 Kariyer Bilgileri</h2>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <label>Meslek/Uzmanlık</label>
+                        <div class="value"><%= worker.profession %></div>
+                    </div>
+                    <div class="info-item">
+                        <label>Aranan İş Türü</label>
+                        <div class="value"><%= worker.jobType %></div>
+                    </div>
+                    <div class="info-item">
+                        <label>Deneyim</label>
+                        <div class="value"><%= worker.experienceYears %> yıl</div>
+                    </div>
+                    <div class="info-item">
+                        <label>Eğitim Durumu</label>
+                        <div class="value"><%= worker.education %></div>
+                    </div>
+                    <% if (worker.expectedSalary) { %>
+                    <div class="info-item">
+                        <label>Beklenen Maaş</label>
+                        <div class="value"><%= worker.expectedSalary.toLocaleString('tr-TR') %> TL</div>
+                    </div>
+                    <% } %>
+                </div>
+            </div>
+
+            <% if (worker.skills && worker.skills.length > 0) { %>
+            <div class="info-section">
+                <h2>🎯 Yetenekler & Beceriler</h2>
+                <div class="skills-list">
+                    <% worker.skills.forEach(skill => { %>
+                        <span class="skill-tag"><%= skill %></span>
+                    <% }) %>
+                </div>
+            </div>
+            <% } %>
+
+            <% if (worker.about) { %>
+            <div class="info-section">
+                <h2>📝 Hakkımda</h2>
+                <div class="about-text"><%= worker.about %></div>
+            </div>
+            <% } %>
+
+            <div class="info-section">
+                <h2>📅 Kayıt Bilgileri</h2>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <label>Kayıt Tarihi</label>
+                        <div class="value"><%= new Date(worker.createdAt).toLocaleDateString('tr-TR') %></div>
+                    </div>
+                    <div class="info-item">
+                        <label>Son Güncelleme</label>
+                        <div class="value"><%= new Date(worker.updatedAt).toLocaleDateString('tr-TR') %></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="action-buttons">
+                <a href="/workers/edit" class="btn btn-primary">✏️ Profili Düzenle</a>
+                <a href="/auth/logout" class="btn btn-secondary">Çıkış Yap</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

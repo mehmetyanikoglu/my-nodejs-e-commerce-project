@@ -26,6 +26,11 @@ const userSchema = new mongoose.Schema(
             required: [true, 'Lütfen bir şifre giriniz.'],
             minlength: [6, 'Şifre en az 6 karakter olmalıdır.'], // Minimum uzunluk kuralı ekleyebiliriz.
         },
+        // Admin yetkisi (varsayılan: false - normal kullanıcı)
+        isAdmin: {
+            type: Boolean,
+            default: false,
+        },
     },
     {
         // createdAt ve updatedAt alanlarını otomatik olarak ekler.

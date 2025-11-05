@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= pageTitle %></title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f7fa;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .navbar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 15px 30px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: white;
+        }
+        .navbar h2 { font-size: 20px; }
+        .navbar .links span,
+        .navbar .links a {
+            color: white;
+            text-decoration: none;
+            margin-left: 15px;
+            padding: 8px 15px;
+            border-radius: 5px;
+        }
+        .navbar .links a {
+            background: rgba(255,255,255,0.2);
+            transition: all 0.3s;
+        }
+        .navbar .links a:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .stat-card h3 { font-size: 14px; color: #6b7280; margin-bottom: 10px; }
+        .stat-card .number { font-size: 32px; font-weight: 700; color: #667eea; }
+        table {
+            width: 100%;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        th, td { padding: 15px; text-align: left; }
+        th { background: #f9fafb; font-weight: 600; color: #374151; }
+        tr:hover { background: #f9fafb; }
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .badge-active { background: #d1fae5; color: #065f46; }
+        .badge-inactive { background: #fee2e2; color: #991b1b; }
+        .badge-approved { background: #dbeafe; color: #1e40af; }
+        .badge-pending { background: #fef3c7; color: #92400e; }
+        .actions button, .actions a {
+            padding: 6px 12px;
+            margin-right: 5px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            text-decoration: none;
+            font-size: 13px;
+        }
+        .btn-edit { background: #10b981; color: white; }
+        .btn-delete { background: #ef4444; color: white; }
+    </style>
+</head>
+<body>
+    <div class="navbar">
+        <h2>👨‍💼 Admin Paneli</h2>
+        <div class="links">
+            <span style="color: white; opacity: 0.9;">👤 <%= user.name %></span>
+            <a href="/auth/logout">Çıkış</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="stats">
+            <div class="stat-card">
+                <h3>Toplam İşçi</h3>
+                <div class="number"><%= workers.length %></div>
+            </div>
+            <div class="stat-card">
+                <h3>Aktif İş Arayanlar</h3>
+                <div class="number"><%= workers.filter(w => w.isActive).length %></div>
+            </div>
+            <div class="stat-card">
+                <h3>Onaylı Kayıtlar</h3>
+                <div class="number"><%= workers.filter(w => w.isApproved).length %></div>
+            </div>
+            <div class="stat-card">
+                <h3>Onay Bekleyenler</h3>
+                <div class="number"><%= workers.filter(w => !w.isApproved).length %></div>
+            </div>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Ad Soyad</th>
+                    <th>Meslek</th>
+                    <th>İş Türü</th>
+                    <th>Deneyim</th>
+                    <th>E-posta</th>
+                    <th>Durum</th>
+                    <th>İşlemler</th>
+                </tr>
+            </thead>
+            <tbody>
+                <% if(workers.length > 0) { %>
+                    <% workers.forEach(worker => { %>
+                        <tr>
+                            <td><strong><%= worker.firstName %> <%= worker.lastName %></strong></td>
+                            <td><%= worker.profession %></td>
+                            <td><%= worker.jobType %></td>
+                            <td><%= worker.experienceYears %> yıl</td>
+                            <td><%= worker.user.email %></td>
+                            <td>
+                                <span class="badge <%= worker.isActive ? 'badge-active' : 'badge-inactive' %>">
+                                    <%= worker.isActive ? 'Aktif' : 'Pasif' %>
+                                </span>
+                                <span class="badge <%= worker.isApproved ? 'badge-approved' : 'badge-pending' %>">
+                                    <%= worker.isApproved ? 'Onaylı' : 'Bekliyor' %>
+                                </span>
+                            </td>
+                            <td class="actions">
+                                <a href="/admin/workers/edit/<%= worker._id %>" class="btn-edit">Düzenle</a>
+                                <form action="/admin/workers/delete/<%= worker._id %>" method="POST" style="display:inline;">
+                                    <button type="submit" class="btn-delete" onclick="return confirm('Bu işçiyi silmek istediğinizden emin misiniz?')">Sil</button>
+                                </form>
+                            </td>
+                        </tr>
+                    <% }); %>
+                <% } else { %>
+                    <tr>
+                        <td colspan="7" style="text-align: center; padding: 40px;">Henüz kayıtlı işçi bulunmuyor.</td>
+                    </tr>
+                <% } %>
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>

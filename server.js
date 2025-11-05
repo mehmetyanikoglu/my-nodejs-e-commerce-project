@@ -4,6 +4,8 @@
 const express = require('express');
 // dotenv: .env dosyasındaki ortam değişkenlerini 'process.env' nesnesine yükler.
 const dotenv = require('dotenv');
+// cookie-parser: Cookie'leri okumak ve yönetmek için
+const cookieParser = require('cookie-parser');
 
 // --- Başlangıç Yapılandırması (Initial Configuration) ---
 
@@ -16,10 +18,12 @@ dotenv.config();
 // 'require' ettiğimizde, database.js dosyasının en sonundaki 'module.exports' bize
 // Database sınıfının tekil örneğini (instance) verir.
 const dbInstance = require('./config/database.js'); 
-// Ürünlerle ilgili URL'leri (/api/products, /api/products/:id) yönetecek olan
-// yönlendirici (router) modülümüzü import ediyoruz.
-const productRoutes = require('./routes/productRoutes.js');
+// Rotaları import et
+const workerRoutes = require('./routes/workerRoutes.js'); // Worker API rotaları
+const workerViewRoutes = require('./routes/workerViewRoutes.js'); // Worker view rotaları
 const userRoutes = require('./routes/userRoutes.js');
+const authRoutes = require('./routes/authRoutes.js'); // Auth rotalarını import et
+const adminRoutes = require('./routes/adminRoutes.js'); // Admin rotalarını import et
 
 // --- Ana Sunucu Başlatma Mantığı ---
 
@@ -40,24 +44,44 @@ const startServer = async () => {
         const app = express();
         const PORT = process.env.PORT || 3000;
 
+        // --- View Engine Ayarı ---
+        // Express'e view (görünüm) şablonlarını render etmek için EJS motorunu kullanmasını söylüyoruz.
+        app.set('view engine', 'ejs');
+
         // --- Middleware Katmanı ---
         // app.use(express.json()): Bu, Express'e gelen isteklerin (request)
         // body kısmındaki JSON verilerini otomatik olarak bir JavaScript nesnesine
         // çevirmesini söyleyen bir ara yazılımdır (middleware). POST ve PUT gibi
         // veri gönderme işlemlerinde bu satır zorunludur.
         app.use(express.json());
+
+        // Tarayıcıdan gönderilen form verilerini (x-www-form-urlencoded) parse etmek için.
+        // extended: true, daha zengin nesnelerin de parse edilmesine olanak tanır.
+        app.use(express.urlencoded({ extended: true }));
+
+        // Cookie'leri okumak için cookie-parser middleware'ini kullan
+        app.use(cookieParser());
         
         // --- Rota (Route) Katmanı ---
 
         // Ana rota: API'nin çalışıp çalışmadığını kontrol etmek için basit bir test noktası.
         app.get('/testapi/', (req, res) => {
-            res.send('Version 1.2: API çalışıyor...');
+            res.send('Version 2.0: İş Arayan Platformu API çalışıyor...');
         });
         
-        // Ürün Rotaları: Uygulamamıza diyoruz ki, "/api/products" ile başlayan
-        // herhangi bir URL'ye istek gelirse, o isteği yönetmesi için 'productRoutes' yönlendiricisine devret.
-        app.use('/api/products', productRoutes);
+        // API Rotaları
+        app.use('/api/workers', workerRoutes); // Worker API rotaları
         app.use('/api/users', userRoutes);
+
+        // View Rotaları (Tarayıcı için)
+        app.use('/workers', workerViewRoutes); // Worker view rotaları
+        app.use('/auth', authRoutes); // Auth sayfaları
+        app.use('/admin', adminRoutes); // Admin paneli rotaları (Sadece yöneticiler erişebilir)
+
+        // Ana sayfa yönlendirmesi - İşçi kayıt formuna yönlendir
+        app.get('/', (req, res) => {
+            res.redirect('/workers');
+        });
         
         // --- Sunucuyu Dinlemeye Başlatma ---
         
