@@ -1,44 +1,91 @@
-const express = require('express');
+import express from 'express';
+import jwt from 'jsonwebtoken';
+import Worker from '../models/Worker.js';
+import User from '../models/User.js';
+
 const router = express.Router();
-const jwt = require('jsonwebtoken');
-const Worker = require('../models/Worker.js');
-const User = require('../models/User.js');
 
-// Middleware: Cookie'den kullanıcı bilgisini al
-const getUserFromToken = async (req, res, next) => {
-  try {
-    const token = req.cookies.token;
-    if (token) {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      req.user = await User.findById(decoded.id).select('-password');
+// Error Messages - Centralized Configuration
+const ERROR_MESSAGES = {
+  SERVER_ERROR: 'Sunucu hatası',
+  WORKER_NOT_FOUND: 'İşçi bulunamadı',
+  UPDATE_ERROR: 'Güncelleme hatası',
+  DELETE_ERROR: 'Silme hatası',
+  FORBIDDEN: '❌ Bu sayfaya erişim yetkiniz yok. Sadece yöneticiler erişebilir.',
+};
+
+// Service Layer - Admin Business Logic
+class AdminWorkerService {
+  static async getAllWorkers() {
+    return Worker.find({})
+      .populate('user', 'name email')
+      .sort({ createdAt: -1 });
+  }
+
+  static async getWorkerById(workerId) {
+    return Worker.findById(workerId).populate('user', 'name email');
+  }
+
+  static async updateWorker(workerId, updateData) {
+    const processedData = {
+      ...updateData,
+      skills: updateData.skills ? updateData.skills.split(',').map(s => s.trim()) : [],
+      isActive: updateData.isActive === 'on',
+      isApproved: updateData.isApproved === 'on',
+    };
+
+    return Worker.findByIdAndUpdate(
+      workerId,
+      processedData,
+      { runValidators: true, new: true }
+    );
+  }
+
+  static async deleteWorker(workerId) {
+    return Worker.findByIdAndDelete(workerId);
+  }
+}
+
+// Middleware Factory Pattern
+const createAuthMiddleware = () => {
+  return async (req, res, next) => {
+    try {
+      const token = req.cookies.token;
+      if (token) {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        req.user = await User.findById(decoded.id).select('-password');
+      }
+    } catch (error) {
+      req.user = null;
     }
-  } catch (error) {
-    req.user = null;
-  }
-  next();
+    next();
+  };
 };
 
-// Middleware: Admin kontrolü
-const requireAdmin = (req, res, next) => {
-  if (!req.user) {
-    return res.redirect('/auth/login');
-  }
-  if (!req.user.isAdmin) {
-    return res.status(403).send('❌ Bu sayfaya erişim yetkiniz yok. Sadece yöneticiler erişebilir.');
-  }
-  next();
+const createAdminMiddleware = () => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.redirect('/auth/login');
+    }
+    if (!req.user.isAdmin) {
+      return res.status(403).send(ERROR_MESSAGES.FORBIDDEN);
+    }
+    next();
+  };
 };
 
-// Tüm admin rotalarında middleware'leri kullan
+// Middleware Instances
+const getUserFromToken = createAuthMiddleware();
+const requireAdmin = createAdminMiddleware();
+
+// Apply global middleware
 router.use(getUserFromToken);
 router.use(requireAdmin);
 
-// --- ADMİN DASHBOARD (Tüm işçileri listele) ---
-router.get('/dashboard', async (req, res) => {
+// Route Handlers - Clean Code Pattern
+const handleDashboard = async (req, res) => {
   try {
-    const workers = await Worker.find({})
-      .populate('user', 'name email')
-      .sort({ createdAt: -1 });
+    const workers = await AdminWorkerService.getAllWorkers();
 
     res.render('admin-dashboard', {
       pageTitle: 'Yönetici Paneli - Tüm Çalışanlar',
@@ -46,18 +93,17 @@ router.get('/dashboard', async (req, res) => {
       workers,
     });
   } catch (err) {
-    console.error('Admin paneli yüklenirken hata:', err);
-    res.status(500).send('Sunucu hatası');
+    console.error('Dashboard loading error:', err);
+    res.status(500).send(ERROR_MESSAGES.SERVER_ERROR);
   }
-});
+};
 
-// --- ADMİN: İŞÇİ DÜZENLEME FORMU ---
-router.get('/workers/edit/:id', async (req, res) => {
+const handleEditForm = async (req, res) => {
   try {
-    const worker = await Worker.findById(req.params.id).populate('user', 'name email');
+    const worker = await AdminWorkerService.getWorkerById(req.params.id);
     
     if (!worker) {
-      return res.status(404).send('İşçi bulunamadı');
+      return res.status(404).send(ERROR_MESSAGES.WORKER_NOT_FOUND);
     }
 
     res.render('admin-worker-edit', {
@@ -68,49 +114,35 @@ router.get('/workers/edit/:id', async (req, res) => {
       error: null,
     });
   } catch (err) {
-    console.error('Admin düzenleme formu yüklenirken hata:', err);
-    res.status(500).send('Sunucu hatası');
+    console.error('Edit form loading error:', err);
+    res.status(500).send(ERROR_MESSAGES.SERVER_ERROR);
   }
-});
+};
 
-// --- ADMİN: İŞÇİ GÜNCELLEME ---
-router.post('/workers/update/:id', async (req, res) => {
+const handleWorkerUpdate = async (req, res) => {
   try {
-    const { firstName, lastName, birthDate, phone, address, profession, jobType, experienceYears, education, skills, about, expectedSalary, isActive, isApproved } = req.body;
-
-    await Worker.findByIdAndUpdate(req.params.id, {
-      firstName,
-      lastName,
-      birthDate,
-      phone,
-      address,
-      profession,
-      jobType,
-      experienceYears,
-      education,
-      skills: skills ? skills.split(',').map(s => s.trim()) : [],
-      about,
-      expectedSalary,
-      isActive: isActive === 'on',
-      isApproved: isApproved === 'on',
-    }, { runValidators: true });
-
+    await AdminWorkerService.updateWorker(req.params.id, req.body);
     res.redirect('/admin/dashboard');
   } catch (err) {
-    console.error('Admin güncelleme hatası:', err);
-    res.status(500).send('Güncelleme hatası');
+    console.error('Worker update error:', err);
+    res.status(500).send(ERROR_MESSAGES.UPDATE_ERROR);
   }
-});
+};
 
-// --- ADMİN: İŞÇİ SİLME ---
-router.post('/workers/delete/:id', async (req, res) => {
+const handleWorkerDelete = async (req, res) => {
   try {
-    await Worker.findByIdAndDelete(req.params.id);
+    await AdminWorkerService.deleteWorker(req.params.id);
     res.redirect('/admin/dashboard');
   } catch (err) {
-    console.error('İşçi silinirken hata:', err);
-    res.status(500).send('Silme hatası');
+    console.error('Worker deletion error:', err);
+    res.status(500).send(ERROR_MESSAGES.DELETE_ERROR);
   }
-});
+};
 
-module.exports = router;
+// Route Definitions - Separation of Concerns
+router.get('/dashboard', handleDashboard);
+router.get('/workers/edit/:id', handleEditForm);
+router.post('/workers/update/:id', handleWorkerUpdate);
+router.post('/workers/delete/:id', handleWorkerDelete);
+
+export default router;

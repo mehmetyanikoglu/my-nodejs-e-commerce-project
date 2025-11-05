@@ -1,89 +1,175 @@
-// Gerekli olan Mongoose ve Bcryptjs kütüphanelerini içeri aktarıyoruz.
-const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
+import mongoose from 'mongoose';
+import bcrypt from 'bcryptjs';
 
-// Bir "Kullanıcı" için Mongoose Şeması (veri şablonu) oluşturuyoruz.
-const userSchema = new mongoose.Schema(
-    {
-        // Kullanıcının adı.
-        name: {
-            type: String,
-            required: [true, 'Lütfen bir isim giriniz.'], // 'true' yerine hata mesajı da verebiliriz.
-            trim: true,
-        },
-        // Kullanıcının e-posta adresi.
-        email: {
-            type: String,
-            required: [true, 'Lütfen bir e-posta adresi giriniz.'],
-            unique: true, // BU ÇOK ÖNEMLİ: Her e-postanın benzersiz olmasını sağlar.
-            // Aynı e-posta ile ikinci bir kullanıcı oluşturulamaz.
-            trim: true,
-            lowercase: true, // E-postaları küçük harfe çevirerek 'Test@mail.com' ile 'test@mail.com'un aynı olmasını sağlar.
-        },
-        // Kullanıcının şifresi.
-        password: {
-            type: String,
-            required: [true, 'Lütfen bir şifre giriniz.'],
-            minlength: [6, 'Şifre en az 6 karakter olmalıdır.'], // Minimum uzunluk kuralı ekleyebiliriz.
-        },
-        // Admin yetkisi (varsayılan: false - normal kullanıcı)
-        isAdmin: {
-            type: Boolean,
-            default: false,
-        },
-    },
-    {
-        // createdAt ve updatedAt alanlarını otomatik olarak ekler.
-        timestamps: true,
-    }
-);
-
-// --- GÜVENLİK KATMANI: ŞİFREYİ OTOMATİK HASH'LEME ---
-// Mongoose'un "pre" middleware'ini kullanıyoruz. Bu, belirli bir işlemden "önce" çalışacak bir fonksiyondur.
-// 'save' işlemi (yani yeni bir kullanıcı kaydedilirken veya mevcut bir kullanıcı güncellenirken)
-// tetiklenmeden HEMEN ÖNCE bu fonksiyon araya girecek.
-userSchema.pre('save', async function (next) {
-    // 'this' anahtar kelimesi, o an kaydedilmekte olan kullanıcı dokümanını temsil eder.
-    // 'userSchema.methods' diyerek, bu şemadan oluşturulan HER BİR kullanıcı dokümanına
-
-    // Eğer şifre alanı DEĞİŞTİRİLMEMİŞSE (örneğin kullanıcı sadece e-postasını güncelliyorsa),
-    // şifreyi tekrar hash'lemeye gerek yok. Boşuna işlem yapma ve devam et.
-    if (!this.isModified('password')) {
-        return next();
-    }
-
-    try {
-        // "Salt", hash'leme işlemine eklenen rastgele bir "karmaşıklık" katmanıdır.
-        // Aynı şifreye sahip iki kullanıcının bile veritabanında farklı hash'lere sahip olmasını sağlar.
-        // 10, salt'un karmaşıklık seviyesidir (genellikle 10-12 arası kullanılır).
-        const salt = await bcrypt.genSalt(10);
-
-        // Kullanıcının girdiği düz metin şifresini ('this.password') alıp, oluşturduğumuz salt ile
-        // geri döndürülemez bir şekilde hash'liyoruz.
-        this.password = await bcrypt.hash(this.password, salt);
-
-        // İşlem bitti, 'save' işlemine devam etmesi için 'next()' fonksiyonunu çağır.
-        next();
-    } catch (error) {
-        // Hash'leme sırasında bir hata olursa, hatayı bir sonraki adıma taşı.
-        next(error);
-    }
-});
-
-// özel metotlar ekleyebiliriz. Bu, bir 'instance method'dur.
-// Metodun adı 'matchPassword'.
-userSchema.methods.matchPassword = async function (enteredPassword) {
-    // Bu metot, iki parametreyi karşılaştırır:
-    // 1. enteredPassword: Kullanıcının giriş yaparken girdiği düz metin şifre.
-    // 2. this.password: Veritabanından gelen, o kullanıcıya ait olan hash'lenmiş şifre.
-    // bcrypt.compare, bu karşılaştırmayı GÜVENLİ bir şekilde yapar. Asla hash'i geri çözmez.
-    // Sonuç olarak 'true' veya 'false' döndürür.
-    return await bcrypt.compare(enteredPassword, this.password);
+// Constants - Configuration
+const VALIDATION = {
+  NAME_REQUIRED: 'Lütfen bir isim giriniz.',
+  EMAIL_REQUIRED: 'Lütfen bir e-posta adresi giriniz.',
+  EMAIL_INVALID: 'Geçerli bir e-posta adresi giriniz.',
+  PASSWORD_REQUIRED: 'Lütfen bir şifre giriniz.',
+  PASSWORD_MIN_LENGTH: 'Şifre en az 6 karakter olmalıdır.',
 };
 
+const SALT_ROUNDS = 10;
 
-// Şemamızı kullanarak bir Model oluşturuyoruz.
+// Email validation regex
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * User Schema - Authentication & Authorization
+ * Handles user accounts with role-based access control
+ */
+const userSchema = new mongoose.Schema(
+  {
+    name: {
+      type: String,
+      required: [true, VALIDATION.NAME_REQUIRED],
+      trim: true,
+      minlength: [2, 'İsim en az 2 karakter olmalıdır.'],
+      maxlength: [100, 'İsim en fazla 100 karakter olabilir.'],
+    },
+    email: {
+      type: String,
+      required: [true, VALIDATION.EMAIL_REQUIRED],
+      unique: true,
+      trim: true,
+      lowercase: true,
+      validate: {
+        validator: (value) => EMAIL_REGEX.test(value),
+        message: VALIDATION.EMAIL_INVALID,
+      },
+      index: true, // Performance optimization for queries
+    },
+    password: {
+      type: String,
+      required: [true, VALIDATION.PASSWORD_REQUIRED],
+      minlength: [6, VALIDATION.PASSWORD_MIN_LENGTH],
+      select: false, // Don't include password in queries by default
+    },
+    isAdmin: {
+      type: Boolean,
+      default: false,
+      index: true, // Performance optimization for admin queries
+    },
+  },
+  {
+    timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
+  }
+);
+
+// Virtual - Full email domain
+userSchema.virtual('emailDomain').get(function () {
+  return this.email.split('@')[1];
+});
+
+// Middleware - Pre-save password hashing
+userSchema.pre('save', async function (next) {
+  // Skip if password not modified
+  if (!this.isModified('password')) {
+    return next();
+  }
+
+  try {
+    // Generate salt and hash password
+    const salt = await bcrypt.genSalt(SALT_ROUNDS);
+    this.password = await bcrypt.hash(this.password, salt);
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Middleware - Pre-save email normalization
+userSchema.pre('save', function (next) {
+  if (this.isModified('email')) {
+    this.email = this.email.toLowerCase().trim();
+  }
+  next();
+});
+
+// Instance Methods
+userSchema.methods = {
+  /**
+   * Compare entered password with hashed password
+   * @param {string} enteredPassword - Plain text password
+   * @returns {Promise<boolean>}
+   */
+  async matchPassword(enteredPassword) {
+    return bcrypt.compare(enteredPassword, this.password);
+  },
+
+  /**
+   * Get safe user object without sensitive data
+   * @returns {Object}
+   */
+  toSafeObject() {
+    return {
+      _id: this._id,
+      name: this.name,
+      email: this.email,
+      isAdmin: this.isAdmin,
+      createdAt: this.createdAt,
+      updatedAt: this.updatedAt,
+    };
+  },
+};
+
+// Static Methods
+userSchema.statics = {
+  /**
+   * Find user by email with password field
+   * @param {string} email
+   * @returns {Promise<User|null>}
+   */
+  async findByEmailWithPassword(email) {
+    return this.findOne({ email: email.toLowerCase() }).select('+password');
+  },
+
+  /**
+   * Find all admin users
+   * @returns {Promise<User[]>}
+   */
+  async findAdmins() {
+    return this.find({ isAdmin: true });
+  },
+
+  /**
+   * Check if email exists
+   * @param {string} email
+   * @returns {Promise<boolean>}
+   */
+  async emailExists(email) {
+    const user = await this.findOne({ email: email.toLowerCase() });
+    return !!user;
+  },
+};
+
+// Query Helpers
+userSchema.query = {
+  /**
+   * Filter by admin status
+   * @param {boolean} isAdmin
+   * @returns {Query}
+   */
+  byAdminStatus(isAdmin) {
+    return this.where({ isAdmin });
+  },
+
+  /**
+   * Find recent users
+   * @param {number} days - Number of days to look back
+   * @returns {Query}
+   */
+  recentUsers(days = 7) {
+    const dateThreshold = new Date();
+    dateThreshold.setDate(dateThreshold.getDate() - days);
+    return this.where('createdAt').gte(dateThreshold);
+  },
+};
+
+// Create model
 const User = mongoose.model('User', userSchema);
 
-// Oluşturduğumuz User modelini projenin başka yerlerinde kullanabilmek için export ediyoruz.
-module.exports = User;
+export default User;

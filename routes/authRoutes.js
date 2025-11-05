@@ -1,68 +1,81 @@
-const express = require('express');
+import express from 'express';
+import User from '../models/User.js';
+import jwt from 'jsonwebtoken';
+
 const router = express.Router();
-const User = require('../models/User.js');
-const Worker = require('../models/Worker.js');
-const jwt = require('jsonwebtoken');
 
-// --- GET: Giriş sayfası ---
-router.get('/login', (req, res) => {
-  res.render('login', {
-    error: null,
-    success: null
+// Constants - Configuration
+const TOKEN_EXPIRY = '30d';
+const COOKIE_MAX_AGE = 30 * 24 * 60 * 60 * 1000; // 30 days in milliseconds
+
+// Helper Functions - Single Responsibility Principle
+const generateToken = (userId) => {
+  return jwt.sign(
+    { id: userId },
+    process.env.JWT_SECRET,
+    { expiresIn: TOKEN_EXPIRY }
+  );
+};
+
+const setCookieToken = (res, token) => {
+  res.cookie('token', token, {
+    httpOnly: true,
+    maxAge: COOKIE_MAX_AGE,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict'
   });
-});
+};
 
-// --- POST: Giriş işlemi ---
-router.post('/login', async (req, res) => {
-  const { email, password } = req.body;
+const getRedirectPath = (user) => {
+  return user.isAdmin ? '/admin/dashboard' : '/workers/profile';
+};
 
+const renderLoginPage = (res, error = null, success = null) => {
+  res.render('login', { error, success });
+};
+
+// Route Handlers - Clean Code Pattern
+const handleLoginPageGet = (req, res) => {
+  renderLoginPage(res);
+};
+
+const handleLoginPost = async (req, res) => {
   try {
-    // Kullanıcıyı bul
-    const user = await User.findOne({ email });
+    const { email, password } = req.body;
 
-    // Kullanıcı var mı ve şifre doğru mu?
-    if (user && (await user.matchPassword(password))) {
-      // JWT token oluştur
-      const token = jwt.sign(
-        { id: user._id },
-        process.env.JWT_SECRET,
-        { expiresIn: '30d' }
-      );
-
-      // Token'ı cookie'ye kaydet (httpOnly güvenlik için önemli)
-      res.cookie('token', token, {
-        httpOnly: true,
-        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 gün
-        secure: process.env.NODE_ENV === 'production', // Production'da HTTPS gerekli
-      });
-
-      // Başarılı giriş - Admin ise admin paneline, değilse çalışan paneline yönlendir
-      if (user.isAdmin) {
-        res.redirect('/admin/dashboard');
-      } else {
-        res.redirect('/workers/profile');
-      }
-    } else {
-      // Hatalı giriş
-      res.render('login', {
-        error: 'E-posta veya şifre hatalı!',
-        success: null
-      });
+    // Validate input
+    if (!email || !password) {
+      return renderLoginPage(res, 'E-posta ve şifre gereklidir.');
     }
-  } catch (error) {
-    console.error('Giriş hatası:', error);
-    res.render('login', {
-      error: 'Sunucu hatası. Lütfen tekrar deneyin.',
-      success: null
-    });
-  }
-});
 
-// --- GET: Çıkış işlemi ---
-router.get('/logout', (req, res) => {
-  // Cookie'yi temizle
+    // Find user
+    const user = await User.findOne({ email }).select('+password');
+
+    // Verify credentials
+    if (!user || !(await user.matchPassword(password))) {
+      return renderLoginPage(res, 'E-posta veya şifre hatalı!');
+    }
+
+    // Generate and set token
+    const token = generateToken(user._id);
+    setCookieToken(res, token);
+
+    // Redirect based on role
+    res.redirect(getRedirectPath(user));
+  } catch (error) {
+    console.error('Login error:', error);
+    renderLoginPage(res, 'Sunucu hatası. Lütfen tekrar deneyin.');
+  }
+};
+
+const handleLogout = (req, res) => {
   res.clearCookie('token');
   res.redirect('/auth/login');
-});
+};
 
-module.exports = router;
+// Route Definitions - Separation of Concerns
+router.get('/login', handleLoginPageGet);
+router.post('/login', handleLoginPost);
+router.get('/logout', handleLogout);
+
+export default router;

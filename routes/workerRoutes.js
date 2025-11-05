@@ -1,16 +1,15 @@
-const express = require('express');
+import express from 'express';
+import {
+  getAllWorkers,
+  getWorkerById,
+  getMyWorkerProfile,
+  createWorker,
+  updateWorker,
+  deleteWorker,
+} from '../controllers/workerController.js';
+import { protect, admin } from '../middleware/authMiddleware.js';
+
 const router = express.Router();
-
-const {
-    getAllWorkers,
-    getWorkerById,
-    getMyWorkerProfile,
-    createWorker,
-    updateWorker,
-    deleteWorker,
-} = require('../controllers/workerController.js');
-
-const { protect, admin } = require('../middleware/authMiddleware.js');
 
 // --- API Rotaları ---
 
@@ -32,4 +31,4 @@ router.put('/:id', protect, updateWorker);
 // İşçi kaydını sil (admin veya kullanıcının kendisi)
 router.delete('/:id', protect, deleteWorker);
 
-module.exports = router;
+export default router;

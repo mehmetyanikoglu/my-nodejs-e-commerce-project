@@ -1,204 +1,225 @@
-const Worker = require('../models/Worker.js');
+import Worker from '../models/Worker.js';
 
-// --- TÜM İŞÇİLERİ GETIR (Admin için) ---
+// Response Helper - Standardized API Responses
+class ApiResponse {
+  static success(res, data, statusCode = 200) {
+    return res.status(statusCode).json({
+      success: true,
+      data,
+    });
+  }
+
+  static error(res, message, statusCode = 500) {
+    return res.status(statusCode).json({
+      success: false,
+      message,
+    });
+  }
+
+  static notFound(res, message = 'Kayıt bulunamadı.') {
+    return this.error(res, message, 404);
+  }
+
+  static forbidden(res, message = 'Bu işlem için yetkiniz yok.') {
+    return this.error(res, message, 403);
+  }
+
+  static badRequest(res, message = 'Geçersiz istek.') {
+    return this.error(res, message, 400);
+  }
+}
+
+// Service Layer - Business Logic
+class WorkerService {
+  static async getAllWorkers() {
+    return Worker.find({})
+      .populate('user', 'name email')
+      .sort({ createdAt: -1 });
+  }
+
+  static async getWorkerById(workerId) {
+    return Worker.findById(workerId).populate('user', 'name email');
+  }
+
+  static async getWorkerByUserId(userId) {
+    return Worker.findOne({ user: userId }).populate('user', 'name email');
+  }
+
+  static async createWorker(userId, workerData) {
+    const processedSkills = Array.isArray(workerData.skills)
+      ? workerData.skills
+      : workerData.skills?.split(',').map(s => s.trim());
+
+    return Worker.create({
+      user: userId,
+      ...workerData,
+      skills: processedSkills,
+    });
+  }
+
+  static async updateWorker(workerId, updateData, isAdmin = false) {
+    const processedSkills = Array.isArray(updateData.skills)
+      ? updateData.skills
+      : updateData.skills?.split(',').map(s => s.trim());
+
+    const dataToUpdate = {
+      ...updateData,
+      skills: processedSkills,
+    };
+
+    // Only admin can update isApproved
+    if (!isAdmin) {
+      delete dataToUpdate.isApproved;
+    }
+
+    return Worker.findByIdAndUpdate(workerId, dataToUpdate, {
+      new: true,
+      runValidators: true,
+    }).populate('user', 'name email');
+  }
+
+  static async deleteWorker(workerId) {
+    return Worker.findByIdAndDelete(workerId);
+  }
+
+  static async checkWorkerExists(userId) {
+    return Worker.findOne({ user: userId });
+  }
+}
+
+// Authorization Helper
+class AuthHelper {
+  static isOwnerOrAdmin(user, ownerId) {
+    return user.isAdmin || user._id.toString() === ownerId.toString();
+  }
+
+  static requireAdmin(user) {
+    return user && user.isAdmin;
+  }
+}
+
+// Controller - Request/Response Handlers
 const getAllWorkers = async (req, res) => {
-    try {
-        // Kullanıcı admin mi kontrol et
-        if (!req.user || !req.user.isAdmin) {
-            return res.status(403).json({ message: 'Bu işlem için admin yetkisi gereklidir.' });
-        }
-
-        // Tüm işçileri getir ve user bilgilerini de dahil et
-        const workers = await Worker.find({})
-            .populate('user', 'name email')
-            .sort({ createdAt: -1 });
-
-        res.status(200).json(workers);
-    } catch (error) {
-        console.error('Hata:', error);
-        res.status(500).json({ message: 'İşçiler getirilirken bir hata oluştu.' });
+  try {
+    if (!AuthHelper.requireAdmin(req.user)) {
+      return ApiResponse.forbidden(res, 'Bu işlem için admin yetkisi gereklidir.');
     }
+
+    const workers = await WorkerService.getAllWorkers();
+    return ApiResponse.success(res, workers);
+  } catch (error) {
+    console.error('Get all workers error:', error);
+    return ApiResponse.error(res, 'İşçiler getirilirken bir hata oluştu.');
+  }
 };
 
-// --- TEK BİR İŞÇİYİ GETIR ---
 const getWorkerById = async (req, res) => {
-    try {
-        const worker = await Worker.findById(req.params.id).populate('user', 'name email');
+  try {
+    const worker = await WorkerService.getWorkerById(req.params.id);
 
-        if (!worker) {
-            return res.status(404).json({ message: 'İşçi bulunamadı.' });
-        }
-
-        // Kullanıcı kendi kaydına veya admin ise erişebilir
-        if (!req.user || (!req.user.isAdmin && worker.user._id.toString() !== req.user._id.toString())) {
-            return res.status(403).json({ message: 'Bu bilgilere erişim yetkiniz yok.' });
-        }
-
-        res.status(200).json(worker);
-    } catch (error) {
-        console.error('Hata:', error);
-        res.status(500).json({ message: 'İşçi getirilirken bir hata oluştu.' });
+    if (!worker) {
+      return ApiResponse.notFound(res, 'İşçi bulunamadı.');
     }
+
+    // Authorization check
+    if (!AuthHelper.isOwnerOrAdmin(req.user, worker.user._id)) {
+      return ApiResponse.forbidden(res, 'Bu bilgilere erişim yetkiniz yok.');
+    }
+
+    return ApiResponse.success(res, worker);
+  } catch (error) {
+    console.error('Get worker by ID error:', error);
+    return ApiResponse.error(res, 'İşçi getirilirken bir hata oluştu.');
+  }
 };
 
-// --- KULLANICININ KENDİ KAYDINI GETIR ---
 const getMyWorkerProfile = async (req, res) => {
-    try {
-        const worker = await Worker.findOne({ user: req.user._id }).populate('user', 'name email');
+  try {
+    const worker = await WorkerService.getWorkerByUserId(req.user._id);
 
-        if (!worker) {
-            return res.status(404).json({ message: 'İşçi kaydınız bulunamadı.' });
-        }
-
-        res.status(200).json(worker);
-    } catch (error) {
-        console.error('Hata:', error);
-        res.status(500).json({ message: 'Profil getirilirken bir hata oluştu.' });
+    if (!worker) {
+      return ApiResponse.notFound(res, 'İşçi kaydınız bulunamadı.');
     }
+
+    return ApiResponse.success(res, worker);
+  } catch (error) {
+    console.error('Get my profile error:', error);
+    return ApiResponse.error(res, 'Profil getirilirken bir hata oluştu.');
+  }
 };
 
-// --- YENİ İŞÇİ KAYDI OLUŞTUR ---
 const createWorker = async (req, res) => {
-    try {
-        const {
-            firstName,
-            lastName,
-            birthDate,
-            phone,
-            address,
-            profession,
-            jobType,
-            experienceYears,
-            education,
-            skills,
-            about,
-            expectedSalary,
-        } = req.body;
-
-        // Bu kullanıcıya ait işçi kaydı zaten var mı kontrol et
-        const existingWorker = await Worker.findOne({ user: req.user._id });
-        if (existingWorker) {
-            return res.status(400).json({ message: 'Zaten bir işçi kaydınız bulunmaktadır.' });
-        }
-
-        // Yeni işçi kaydı oluştur
-        const worker = await Worker.create({
-            user: req.user._id,
-            firstName,
-            lastName,
-            birthDate,
-            phone,
-            address,
-            profession,
-            jobType,
-            experienceYears,
-            education,
-            skills: Array.isArray(skills) ? skills : skills?.split(',').map(s => s.trim()),
-            about,
-            expectedSalary,
-        });
-
-        res.status(201).json(worker);
-    } catch (error) {
-        console.error('Hata:', error);
-        res.status(500).json({ message: 'İşçi kaydı oluşturulurken bir hata oluştu.' });
+  try {
+    // Check if worker already exists
+    const existingWorker = await WorkerService.checkWorkerExists(req.user._id);
+    if (existingWorker) {
+      return ApiResponse.badRequest(res, 'Zaten bir işçi kaydınız bulunmaktadır.');
     }
+
+    // Create new worker
+    const worker = await WorkerService.createWorker(req.user._id, req.body);
+
+    return ApiResponse.success(res, worker, 201);
+  } catch (error) {
+    console.error('Create worker error:', error);
+    return ApiResponse.error(res, 'İşçi kaydı oluşturulurken bir hata oluştu.');
+  }
 };
 
-// --- İŞÇİ KAYDINI GÜNCELLE ---
 const updateWorker = async (req, res) => {
-    try {
-        const worker = await Worker.findById(req.params.id);
+  try {
+    const worker = await WorkerService.getWorkerById(req.params.id);
 
-        if (!worker) {
-            return res.status(404).json({ message: 'İşçi bulunamadı.' });
-        }
-
-        // Kullanıcı kendi kaydını veya admin tüm kayıtları güncelleyebilir
-        if (!req.user || (!req.user.isAdmin && worker.user.toString() !== req.user._id.toString())) {
-            return res.status(403).json({ message: 'Bu işlem için yetkiniz yok.' });
-        }
-
-        const {
-            firstName,
-            lastName,
-            birthDate,
-            phone,
-            address,
-            profession,
-            jobType,
-            experienceYears,
-            education,
-            skills,
-            about,
-            expectedSalary,
-            isActive,
-            isApproved,
-        } = req.body;
-
-        // Güncelleme verileri
-        const updateData = {
-            firstName,
-            lastName,
-            birthDate,
-            phone,
-            address,
-            profession,
-            jobType,
-            experienceYears,
-            education,
-            skills: Array.isArray(skills) ? skills : skills?.split(',').map(s => s.trim()),
-            about,
-            expectedSalary,
-            isActive,
-        };
-
-        // Sadece admin isApproved değiştirebilir
-        if (req.user.isAdmin && isApproved !== undefined) {
-            updateData.isApproved = isApproved;
-        }
-
-        const updatedWorker = await Worker.findByIdAndUpdate(
-            req.params.id,
-            updateData,
-            { new: true, runValidators: true }
-        ).populate('user', 'name email');
-
-        res.status(200).json(updatedWorker);
-    } catch (error) {
-        console.error('Hata:', error);
-        res.status(500).json({ message: 'İşçi güncellenirken bir hata oluştu.' });
+    if (!worker) {
+      return ApiResponse.notFound(res, 'İşçi bulunamadı.');
     }
+
+    // Authorization check
+    if (!AuthHelper.isOwnerOrAdmin(req.user, worker.user._id)) {
+      return ApiResponse.forbidden(res);
+    }
+
+    // Update worker
+    const updatedWorker = await WorkerService.updateWorker(
+      req.params.id,
+      req.body,
+      req.user.isAdmin
+    );
+
+    return ApiResponse.success(res, updatedWorker);
+  } catch (error) {
+    console.error('Update worker error:', error);
+    return ApiResponse.error(res, 'İşçi güncellenirken bir hata oluştu.');
+  }
 };
 
-// --- İŞÇİ KAYDINI SİL ---
 const deleteWorker = async (req, res) => {
-    try {
-        const worker = await Worker.findById(req.params.id);
+  try {
+    const worker = await WorkerService.getWorkerById(req.params.id);
 
-        if (!worker) {
-            return res.status(404).json({ message: 'İşçi bulunamadı.' });
-        }
-
-        // Sadece admin silebilir veya kullanıcı kendi kaydını silebilir
-        if (!req.user || (!req.user.isAdmin && worker.user.toString() !== req.user._id.toString())) {
-            return res.status(403).json({ message: 'Bu işlem için yetkiniz yok.' });
-        }
-
-        await Worker.findByIdAndDelete(req.params.id);
-
-        res.status(200).json({ message: 'İşçi kaydı başarıyla silindi.' });
-    } catch (error) {
-        console.error('Hata:', error);
-        res.status(500).json({ message: 'İşçi silinirken bir hata oluştu.' });
+    if (!worker) {
+      return ApiResponse.notFound(res, 'İşçi bulunamadı.');
     }
+
+    // Authorization check
+    if (!AuthHelper.isOwnerOrAdmin(req.user, worker.user._id)) {
+      return ApiResponse.forbidden(res);
+    }
+
+    await WorkerService.deleteWorker(req.params.id);
+
+    return ApiResponse.success(res, { message: 'İşçi kaydı başarıyla silindi.' });
+  } catch (error) {
+    console.error('Delete worker error:', error);
+    return ApiResponse.error(res, 'İşçi silinirken bir hata oluştu.');
+  }
 };
 
-module.exports = {
-    getAllWorkers,
-    getWorkerById,
-    getMyWorkerProfile,
-    createWorker,
-    updateWorker,
-    deleteWorker,
+export {
+  getAllWorkers,
+  getWorkerById,
+  getMyWorkerProfile,
+  createWorker,
+  updateWorker,
+  deleteWorker,
 };
